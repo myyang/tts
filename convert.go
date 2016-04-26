@@ -79,13 +79,11 @@ func ConvertSimple(account, password, text string) string {
 	output, err := xml.Marshal(x)
 	if err != nil {
 		log.Fatalf("ConvertSimple: marshal error: %v\n", err)
-		return ""
 	}
 
 	buf, err := getResponse(output)
 	if err != nil {
 		log.Fatalf("ConvertSimple: response error: %v\n", err)
-		return ""
 	}
 
 	_, _, convertID := parseConvertResult(buf)
@@ -98,14 +96,12 @@ func getResponse(output []byte) ([]byte, error) {
 	response, err := http.Post(url, "text/xml", bodyReader)
 	if err != nil {
 		log.Fatalf("getResponse: post error: %v\n", err)
-		return []byte{}, err
 	}
 
 	buf := make([]byte, response.ContentLength-1)
 	_, err = response.Body.Read(buf)
 	if err != nil {
 		log.Fatalf("getResponse: read response error: %v\n", err)
-		return []byte{}, err
 	}
 
 	return buf, nil
@@ -116,7 +112,6 @@ func parseConvertResult(buf []byte) (resultCode, resultString, convertID string)
 	err := xml.Unmarshal(buf, &r)
 	if err != nil {
 		log.Fatalf("parseConvertResult: unmarshal error: %v\n", err)
-		return "", "", ""
 	}
 
 	s := ""
@@ -132,7 +127,6 @@ func parseConvertResult(buf []byte) (resultCode, resultString, convertID string)
 	re, err := regexp.Compile(`(?P<resultCode>[[:digit:]]+)&(?P<resultMsg>[[:alnum:]]+)&(?P<covertID>[[:digit:]]+)`)
 	if err != nil {
 		log.Fatalf("parseConvertResult: regular exp fail: %v\n", re)
-		return "", "", ""
 	}
 
 	if !re.MatchString(s) {
@@ -149,7 +143,6 @@ func getConvertStatus(accountID, password, convertID string) string {
 	output, err := xml.Marshal(x)
 	if err != nil {
 		log.Fatalf("ConvertSimple: marshal error: %v\n", err)
-		return ""
 	}
 
 	fail, r := 3, ""
@@ -157,12 +150,10 @@ func getConvertStatus(accountID, password, convertID string) string {
 		buf, err := getResponse(output)
 		if err != nil {
 			log.Fatalf("ConvertSimple: response error: %v\n", err)
-			return ""
 		}
 		r = parseConvertStatus(buf)
 		if r != "" {
 			log.Printf("Convertion done. File: %s\n", r)
-			break
 		}
 		log.Printf("Wait and retry to fetch file...\n")
 		time.Sleep(2 * time.Second)
@@ -201,13 +192,11 @@ func ConvertText(account, password, text, speaker, volume, speed, outtype string
 	output, err := xml.Marshal(x)
 	if err != nil {
 		log.Fatalf("ConvertText: marshal error: %v\n", err)
-		return ""
 	}
 
 	buf, err := getResponse(output)
 	if err != nil {
 		log.Fatalf("ConvertText: response error: %v\n", err)
-		return ""
 	}
 
 	_, _, convertID := parseConvertResult(buf)
@@ -229,13 +218,11 @@ func ConvertAdvancedText(
 	output, err := xml.Marshal(x)
 	if err != nil {
 		log.Fatalf("ConvertAdvancedText: marshal error: %v\n", err)
-		return ""
 	}
 
 	buf, err := getResponse(output)
 	if err != nil {
 		log.Fatalf("ConvertAdvancedText: response error: %v\n", err)
-		return ""
 	}
 
 	_, _, convertID := parseConvertResult(buf)
