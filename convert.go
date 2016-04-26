@@ -82,8 +82,7 @@ func ConvertSimple(account, password, text string) string {
 		log.Fatalf("ConvertSimple: marshal error: %v\n", err)
 	}
 
-	buf := getResponse(bytes.NewBuffer(output))
-	convertID := parseConvertResult(buf)
+	convertID := getConvertID(bytes.NewBuffer(output))
 
 	return getConvertStatus(account, password, convertID)
 }
@@ -122,9 +121,6 @@ func parseConvertResult(buf *bytes.Buffer) string {
 	}
 
 	re, err := regexp.Compile(`(?P<resultCode>[[:digit:]]+)&(?P<resultMsg>[\s[:alnum:]]+)&?(?P<covertID>[[:digit:]]+)?`)
-	if err != nil {
-		log.Fatalf("parseConvertResult: regular exp fail: %v\n", re)
-	}
 
 	if !re.MatchString(s) {
 		log.Fatalf("parseConvertResult: %s, not match %v\n", s, re.FindStringSubmatch(s))
@@ -178,9 +174,12 @@ func parseConvertStatus(buf *bytes.Buffer) string {
 
 	if !re.MatchString(s) {
 		log.Printf("parseConvertStatus: not match %v\n", re.FindStringSubmatch(s))
-		return ""
 	}
 	return re.FindStringSubmatch(s)[5]
+}
+
+func getConvertID(buff *bytes.Buffer) string {
+	return parseConvertResult(getResponse(buff))
 }
 
 // ConvertText provides shortcut to get converted sound file url
@@ -196,8 +195,7 @@ func ConvertText(account, password, text, speaker, volume, speed, outtype string
 		log.Fatalf("ConvertText: marshal error: %v\n", err)
 	}
 
-	buf := getResponse(bytes.NewBuffer(output))
-	convertID := parseConvertResult(buf)
+	convertID := getConvertID(bytes.NewBuffer(output))
 
 	return getConvertStatus(account, password, convertID)
 }
@@ -218,8 +216,7 @@ func ConvertAdvancedText(
 		log.Fatalf("ConvertAdvancedText: marshal error: %v\n", err)
 	}
 
-	buf := getResponse(bytes.NewBuffer(output))
-	convertID := parseConvertResult(buf)
+	convertID := getConvertID(bytes.NewBuffer(output))
 
 	return getConvertStatus(account, password, convertID)
 }
