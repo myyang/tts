@@ -16,7 +16,8 @@ const (
 	url             string = "http://tts.itri.org.tw/TTSService/Soap_1_3.php?wsdl"
 	requestTemplate string = "" +
 		"<soap12:Envelope xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"" +
-		" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" xmlns:soap12=\"http://www.w3.org/2003/05/soap-envelope\">" +
+		" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\"" +
+		" xmlns:soap12=\"http://www.w3.org/2003/05/soap-envelope\">" +
 		"<soap12:Body>%s</soap12:Body></soap12:Envelope>"
 )
 
@@ -165,12 +166,11 @@ func parseConvertStatus(buf *bytes.Buffer) string {
 	if err != nil {
 		log.Fatalf("parseConvertStatus: unmarshal error: %v\n", err)
 	}
-	log.Printf("parseConvertStatus: response: %v\n", r)
+
 	s := r.Body.ConvertStatus.Result
-	re, err := regexp.Compile(`(?P<resultCode>[[:digit:]]+)&(?P<resultMsg>[[:alnum:]]+)&(?P<statusCode>[[:digit:]]+)&(?P<statusMsg>[[:alnum:]]+)&?(?P<url>.*)?`)
-	if err != nil {
-		log.Fatalf("parseConvertStatus: regular exp fail: %v\n", re)
-	}
+	re, err := regexp.Compile(
+		`(?P<resultCode>[[:digit:]]+)&(?P<resultMsg>[[:alnum:]]+)` +
+			`&(?P<statusCode>[[:digit:]]+)&(?P<statusMsg>[[:alnum:]]+)&?(?P<url>.*)?`)
 
 	if !re.MatchString(s) {
 		log.Printf("parseConvertStatus: not match %v\n", re.FindStringSubmatch(s))
