@@ -140,19 +140,30 @@ func getConvertStatus(accountID, password, convertID string) string {
 		log.Fatalf("ConvertSimple: marshal error: %v\n", err)
 	}
 
+	urlChan := make(chan string)
+	go fetchOrRetry(bytes.NewBuffer(output), urlChan)
+	return <-urlChan
+}
+
+func fetchOrRetry(buff *bytes.Buffer, urlc chan string) {
 	fail, r := 3, ""
 	for fail > 0 {
-		buf := getResponse(bytes.NewBuffer(output))
-		r = parseConvertStatus(buf)
+		r = parseConvertStatus(getResponse(buff))
 		if r != "" {
 			log.Printf("Convertion done. File: %s\n", r)
+			urlc <- r
 			break
 		}
-		log.Printf("Wait and retry to fetch file...\n")
-		time.Sleep(2 * time.Second)
+		log.Printf("Wait 5 seconds and retry to fetch file...\n")
+		time.Sleep(5 * time.Second)
 		fail--
 	}
-	return r
+
+	if fail < 0 {
+		log.Printf("Exceed maximum failure times\n")
+	}
+
+	urlc <- ""
 }
 
 func parseConvertStatus(buf *bytes.Buffer) string {
