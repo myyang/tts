@@ -123,16 +123,11 @@ func parseConvertResult(buf *bytes.Buffer) string {
 
 	re, err := regexp.Compile(`(?P<resultCode>[[:digit:]]+)&(?P<resultMsg>[\s[:alnum:]]+)&?(?P<covertID>[[:digit:]]+)?`)
 
-	if !re.MatchString(s) {
-		log.Fatalf("parseConvertResult: %s, not match %v\n", s, re.FindStringSubmatch(s))
+	if !re.MatchString(s) || re.FindStringSubmatch(s)[1] != "0" {
+		log.Fatalf("parseConvertResult: %s, not match or fail: %v\n", s, re.FindStringSubmatch(s))
 	}
 
 	log.Printf("parseConvertResult match: %v\n", re.FindStringSubmatch(s))
-
-	if re.FindStringSubmatch(s)[1] != "0" {
-		log.Fatal("parseConvertResult: Remote error: %v\n", re.FindStringSubmatch(s))
-	}
-
 	return re.FindStringSubmatch(s)[3]
 
 }
@@ -174,7 +169,12 @@ func parseConvertStatus(buf *bytes.Buffer) string {
 
 	if !re.MatchString(s) {
 		log.Printf("parseConvertStatus: not match %v\n", re.FindStringSubmatch(s))
+		return ""
+	} else if re.FindStringSubmatch(s)[3] != "2" {
+		log.Printf("parseConvertStatus: not completed yet %v\n", re.FindStringSubmatch(s))
+		return ""
 	}
+
 	return re.FindStringSubmatch(s)[5]
 }
 
