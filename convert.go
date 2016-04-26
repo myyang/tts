@@ -2,6 +2,7 @@
 package tts
 
 import (
+	"bytes"
 	"encoding/xml"
 	"fmt"
 	"log"
@@ -15,7 +16,8 @@ const (
 	url             string = "http://tts.itri.org.tw/TTSService/Soap_1_3.php?wsdl"
 	requestTemplate string = "" +
 		"<soap12:Envelope xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"" +
-		" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" xmlns:soap12=\"http://www.w3.org/2003/05/soap-envelope\">" +
+		" xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\"" +
+		" xmlns:soap12=\"http://www.w3.org/2003/05/soap-envelope\">" +
 		"<soap12:Body>%s</soap12:Body></soap12:Envelope>"
 )
 
@@ -79,44 +81,34 @@ func ConvertSimple(account, password, text string) string {
 	output, err := xml.Marshal(x)
 	if err != nil {
 		log.Fatalf("ConvertSimple: marshal error: %v\n", err)
-		return ""
 	}
 
-	buf, err := getResponse(output)
-	if err != nil {
-		log.Fatalf("ConvertSimple: response error: %v\n", err)
-		return ""
-	}
-
-	_, _, convertID := parseConvertResult(buf)
+	convertID := getConvertID(bytes.NewBuffer(output))
 
 	return getConvertStatus(account, password, convertID)
 }
 
-func getResponse(output []byte) ([]byte, error) {
-	bodyReader := strings.NewReader(fmt.Sprintf(requestTemplate, output))
+func getResponse(output *bytes.Buffer) *bytes.Buffer {
+	bodyReader := strings.NewReader(fmt.Sprintf(requestTemplate, output.Bytes()))
 	response, err := http.Post(url, "text/xml", bodyReader)
 	if err != nil {
 		log.Fatalf("getResponse: post error: %v\n", err)
-		return []byte{}, err
 	}
 
 	buf := make([]byte, response.ContentLength-1)
 	_, err = response.Body.Read(buf)
 	if err != nil {
 		log.Fatalf("getResponse: read response error: %v\n", err)
-		return []byte{}, err
 	}
 
-	return buf, nil
+	return bytes.NewBuffer(buf)
 }
 
-func parseConvertResult(buf []byte) (resultCode, resultString, convertID string) {
+func parseConvertResult(buf *bytes.Buffer) string {
 	r := convertResponse{}
-	err := xml.Unmarshal(buf, &r)
+	err := xml.Unmarshal(buf.Bytes(), &r)
 	if err != nil {
 		log.Fatalf("parseConvertResult: unmarshal error: %v\n", err)
-		return "", "", ""
 	}
 
 	s := ""
@@ -129,17 +121,14 @@ func parseConvertResult(buf []byte) (resultCode, resultString, convertID string)
 		s = r.Body.AdvancedText.Result
 	}
 
-	re, err := regexp.Compile(`(?P<resultCode>[[:digit:]]+)&(?P<resultMsg>[[:alnum:]]+)&(?P<covertID>[[:digit:]]+)`)
-	if err != nil {
-		log.Fatalf("parseConvertResult: regular exp fail: %v\n", re)
-		return "", "", ""
+	re, err := regexp.Compile(`(?P<resultCode>[[:digit:]]+)&(?P<resultMsg>[\s[:alnum:]]+)&?(?P<covertID>[[:digit:]]+)?`)
+
+	if !re.MatchString(s) || re.FindStringSubmatch(s)[1] != "0" {
+		log.Fatalf("parseConvertResult: %s, not match or fail: %v\n", s, re.FindStringSubmatch(s))
 	}
 
-	if !re.MatchString(s) {
-		log.Fatalf("parseConvertResult: %s, not match %v\n", s, re.FindStringSubmatch(s))
-	}
 	log.Printf("parseConvertResult match: %v\n", re.FindStringSubmatch(s))
-	return re.FindStringSubmatch(s)[1], re.FindStringSubmatch(s)[2], re.FindStringSubmatch(s)[3]
+	return re.FindStringSubmatch(s)[3]
 
 }
 
@@ -149,45 +138,59 @@ func getConvertStatus(accountID, password, convertID string) string {
 	output, err := xml.Marshal(x)
 	if err != nil {
 		log.Fatalf("ConvertSimple: marshal error: %v\n", err)
-		return ""
 	}
 
-	fail, r := 3, ""
-	for fail > 0 {
-		buf, err := getResponse(output)
-		if err != nil {
-			log.Fatalf("ConvertSimple: response error: %v\n", err)
-			return ""
-		}
-		r = parseConvertStatus(buf)
-		if r != "" {
-			log.Printf("Convertion done. File: %s\n", r)
-			break
-		}
-		log.Printf("Wait and retry to fetch file...\n")
-		time.Sleep(2 * time.Second)
-	}
-	return r
+	urlChan := make(chan string)
+	go fetchOrRetry(bytes.NewBuffer(output), urlChan)
+	return <-urlChan
 }
 
-func parseConvertStatus(buf []byte) string {
+func fetchOrRetry(buff *bytes.Buffer, urlc chan string) {
+	fail, r := 3, ""
+	for fail > 0 {
+		r = parseConvertStatus(getResponse(buff))
+		if r != "" {
+			log.Printf("Convertion done. File: %s\n", r)
+			urlc <- r
+			break
+		}
+		log.Printf("Wait 5 seconds and retry to fetch file...\n")
+		time.Sleep(5 * time.Second)
+		fail--
+	}
+
+	if fail < 0 {
+		log.Printf("Exceed maximum failure times\n")
+	}
+
+	urlc <- ""
+}
+
+func parseConvertStatus(buf *bytes.Buffer) string {
 	r := convertResponse{}
-	err := xml.Unmarshal(buf, &r)
+	err := xml.Unmarshal(buf.Bytes(), &r)
 	if err != nil {
 		log.Fatalf("parseConvertStatus: unmarshal error: %v\n", err)
 	}
-	log.Printf("parseConvertStatus: response: %v\n", r)
+
 	s := r.Body.ConvertStatus.Result
-	re, err := regexp.Compile(`(?P<resultCode>[[:digit:]]+)&(?P<resultMsg>[[:alnum:]]+)&(?P<statusCode>[[:digit:]]+)&(?P<statusMsg>[[:alnum:]]+)&?(?P<url>.*)?`)
-	if err != nil {
-		log.Fatalf("parseConvertStatus: regular exp fail: %v\n", re)
-	}
+	re, err := regexp.Compile(
+		`(?P<resultCode>[[:digit:]]+)&(?P<resultMsg>[[:alnum:]]+)` +
+			`&(?P<statusCode>[[:digit:]]+)&(?P<statusMsg>[[:alnum:]]+)&?(?P<url>.*)?`)
 
 	if !re.MatchString(s) {
 		log.Printf("parseConvertStatus: not match %v\n", re.FindStringSubmatch(s))
 		return ""
+	} else if re.FindStringSubmatch(s)[3] != "2" {
+		log.Printf("parseConvertStatus: not completed yet %v\n", re.FindStringSubmatch(s))
+		return ""
 	}
+
 	return re.FindStringSubmatch(s)[5]
+}
+
+func getConvertID(buff *bytes.Buffer) string {
+	return parseConvertResult(getResponse(buff))
 }
 
 // ConvertText provides shortcut to get converted sound file url
@@ -201,16 +204,9 @@ func ConvertText(account, password, text, speaker, volume, speed, outtype string
 	output, err := xml.Marshal(x)
 	if err != nil {
 		log.Fatalf("ConvertText: marshal error: %v\n", err)
-		return ""
 	}
 
-	buf, err := getResponse(output)
-	if err != nil {
-		log.Fatalf("ConvertText: response error: %v\n", err)
-		return ""
-	}
-
-	_, _, convertID := parseConvertResult(buf)
+	convertID := getConvertID(bytes.NewBuffer(output))
 
 	return getConvertStatus(account, password, convertID)
 }
@@ -229,16 +225,9 @@ func ConvertAdvancedText(
 	output, err := xml.Marshal(x)
 	if err != nil {
 		log.Fatalf("ConvertAdvancedText: marshal error: %v\n", err)
-		return ""
 	}
 
-	buf, err := getResponse(output)
-	if err != nil {
-		log.Fatalf("ConvertAdvancedText: response error: %v\n", err)
-		return ""
-	}
-
-	_, _, convertID := parseConvertResult(buf)
+	convertID := getConvertID(bytes.NewBuffer(output))
 
 	return getConvertStatus(account, password, convertID)
 }
