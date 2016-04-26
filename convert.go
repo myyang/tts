@@ -2,6 +2,7 @@
 package tts
 
 import (
+	"bytes"
 	"encoding/xml"
 	"fmt"
 	"log"
@@ -81,14 +82,14 @@ func ConvertSimple(account, password, text string) string {
 		log.Fatalf("ConvertSimple: marshal error: %v\n", err)
 	}
 
-	buf := getResponse(output)
+	buf := getResponse(bytes.NewBuffer(output))
 	convertID := parseConvertResult(buf)
 
 	return getConvertStatus(account, password, convertID)
 }
 
-func getResponse(output []byte) []byte {
-	bodyReader := strings.NewReader(fmt.Sprintf(requestTemplate, output))
+func getResponse(output *bytes.Buffer) *bytes.Buffer {
+	bodyReader := strings.NewReader(fmt.Sprintf(requestTemplate, output.Bytes()))
 	response, err := http.Post(url, "text/xml", bodyReader)
 	if err != nil {
 		log.Fatalf("getResponse: post error: %v\n", err)
@@ -100,12 +101,12 @@ func getResponse(output []byte) []byte {
 		log.Fatalf("getResponse: read response error: %v\n", err)
 	}
 
-	return buf
+	return bytes.NewBuffer(buf)
 }
 
-func parseConvertResult(buf []byte) string {
+func parseConvertResult(buf *bytes.Buffer) string {
 	r := convertResponse{}
-	err := xml.Unmarshal(buf, &r)
+	err := xml.Unmarshal(buf.Bytes(), &r)
 	if err != nil {
 		log.Fatalf("parseConvertResult: unmarshal error: %v\n", err)
 	}
@@ -149,7 +150,7 @@ func getConvertStatus(accountID, password, convertID string) string {
 
 	fail, r := 3, ""
 	for fail > 0 {
-		buf := getResponse(output)
+		buf := getResponse(bytes.NewBuffer(output))
 		r = parseConvertStatus(buf)
 		if r != "" {
 			log.Printf("Convertion done. File: %s\n", r)
@@ -162,9 +163,9 @@ func getConvertStatus(accountID, password, convertID string) string {
 	return r
 }
 
-func parseConvertStatus(buf []byte) string {
+func parseConvertStatus(buf *bytes.Buffer) string {
 	r := convertResponse{}
-	err := xml.Unmarshal(buf, &r)
+	err := xml.Unmarshal(buf.Bytes(), &r)
 	if err != nil {
 		log.Fatalf("parseConvertStatus: unmarshal error: %v\n", err)
 	}
@@ -195,7 +196,7 @@ func ConvertText(account, password, text, speaker, volume, speed, outtype string
 		log.Fatalf("ConvertText: marshal error: %v\n", err)
 	}
 
-	buf := getResponse(output)
+	buf := getResponse(bytes.NewBuffer(output))
 	convertID := parseConvertResult(buf)
 
 	return getConvertStatus(account, password, convertID)
@@ -217,7 +218,7 @@ func ConvertAdvancedText(
 		log.Fatalf("ConvertAdvancedText: marshal error: %v\n", err)
 	}
 
-	buf := getResponse(output)
+	buf := getResponse(bytes.NewBuffer(output))
 	convertID := parseConvertResult(buf)
 
 	return getConvertStatus(account, password, convertID)
